@@ -28,7 +28,7 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 
 ## Funcionalidades
 
-- Login com RA e token individual.
+- Login com RA e token.
 - Cadastro de objetos perdidos e encontrados.
 - Consulta dos próprios cadastros e seus códigos de identificação.
 - Busca de possíveis correspondências por categoria, nome, descrição, local, cor e data.
