@@ -92,11 +92,19 @@ def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
 
 def mostrar_detalhes(item, codigo):
     st.write("Nome:", item.get("nome", ""))
-    st.write("Categoria:", item.get("categoria", ""))
-    st.write("Cor:", item.get("cor", ""))
-    st.write("Local:", item.get("local", ""))
-    st.write("Data:", item.get("data_ocorrido", ""))
+    st.caption(item.get("categoria", ""))
     st.write("Descrição:", item.get("descricao", ""))
+
+    coluna_cor, coluna_local, coluna_data = st.columns(3)
+    with coluna_cor:
+        st.caption("COR")
+        st.write(item.get("cor", ""))
+    with coluna_local:
+        st.caption("LOCAL")
+        st.write(item.get("local", ""))
+    with coluna_data:
+        st.caption("DATA")
+        st.write(item.get("data_ocorrido", ""))
 
     st.caption("Código do cadastro:")
     st.code(codigo, language=None)
@@ -110,8 +118,10 @@ def mostrar_devolucoes(banco, usuario):
     if usuario.get("permissao") != "admin":
         return
 
-    st.divider()
-    st.subheader("Admin — confirmar devolução")
+    st.caption(
+        "Localize o cadastro perdido, confira os candidatos e registre "
+        "a entrega somente depois da conferência presencial."
+    )
 
     aviso = st.session_state.pop("aviso_devolucao", None)
     if aviso:
@@ -123,7 +133,10 @@ def mostrar_devolucoes(banco, usuario):
             max_chars=128,
             help="O aluno encontra esse código em Meus objetos.",
         )
-        buscar = st.form_submit_button("Buscar objetos encontrados")
+        buscar = st.form_submit_button(
+            "Buscar objetos encontrados",
+            type="primary",
+        )
 
     if buscar:
         st.session_state.pop("ranking_admin", None)
@@ -204,7 +217,10 @@ def mostrar_devolucoes(banco, usuario):
     )
 
     if not ranking:
-        st.info("Não há objetos encontrados abertos nessa categoria.")
+        st.info(
+            "Não há objetos encontrados em aberto nessa categoria. "
+            "Uma nova busca atualiza os candidatos disponíveis."
+        )
         return
 
     st.write(
@@ -255,19 +271,20 @@ def mostrar_devolucoes(banco, usuario):
         st.subheader("Objeto encontrado")
         mostrar_detalhes(resultado["item"], escolhido)
 
-    st.write(
-        f"Pontuação de semelhança: "
-        f"{resultado['pontuacao']:.1f}/100"
+    st.metric(
+        "Pontuação de semelhança textual",
+        f"{resultado['pontuacao']:.1f}/100",
     )
 
+    st.markdown("**Pontuação por critério**")
     st.table([
         {"Critério": criterio, "Pontos": round(pontos, 1)}
         for criterio, pontos in resultado["notas"].items()
     ])
 
     st.info(
-        "Confira o objeto físico e a propriedade antes de entregar. "
-        "A pontuação não confirma que os objetos são o mesmo."
+        "A pontuação organiza a comparação, mas não confirma a identidade. "
+        "Confira o objeto físico e a propriedade antes de entregar."
     )
 
     with st.form(
@@ -275,10 +292,12 @@ def mostrar_devolucoes(banco, usuario):
         clear_on_submit=True,
     ):
         conferido = st.checkbox(
-            "Conferi os dois cadastros e já entreguei "
-            "o objeto ao proprietário."
+            "Conferi o objeto e a propriedade, e já entreguei ao proprietário."
         )
-        confirmar = st.form_submit_button("Confirmar devolução")
+        confirmar = st.form_submit_button(
+            "Confirmar devolução",
+            type="primary",
+        )
 
     if confirmar:
         if not conferido:

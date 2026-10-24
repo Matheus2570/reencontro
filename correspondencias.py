@@ -6,6 +6,7 @@ import streamlit as st
 from rapidfuzz import fuzz
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.firestore_v1.base_query import FieldFilter
+from objetos import link_foto_valido
 
 
 def normalizar(texto):
@@ -51,9 +52,6 @@ def pontuar_objetos(origem, candidato):
 
 
 def mostrar_correspondencias(banco, usuario):
-    st.divider()
-    st.subheader("Buscar correspondências")
-
     try:
         documentos = list(
             banco.collection("itens")
@@ -74,7 +72,10 @@ def mostrar_correspondencias(banco, usuario):
     }
 
     if not meus_itens:
-        st.info("Cadastre um objeto para buscar correspondências.")
+        st.info(
+            "Não há objetos abertos no seu catálogo. Cadastre ou aguarde "
+            "um registro para iniciar uma comparação."
+        )
         return
 
     with st.form("busca_correspondencias"):
@@ -87,7 +88,10 @@ def mostrar_correspondencias(banco, usuario):
                 f"({meus_itens[chave]['data_ocorrido']})"
             ),
         )
-        buscar = st.form_submit_button("Buscar correspondências")
+        buscar = st.form_submit_button(
+            "Buscar correspondências",
+            type="primary",
+        )
 
     if not buscar:
         return
@@ -122,7 +126,7 @@ def mostrar_correspondencias(banco, usuario):
         pontuacao, notas = pontuar_objetos(origem, candidato)
 
         if pontuacao >= 60:
-            resultados.append((pontuacao, notas, candidato))
+            resultados.append((pontuacao, notas, candidato, documento.id))
 
     resultados.sort(key=lambda resultado: resultado[0], reverse=True)
 
@@ -141,16 +145,55 @@ def mostrar_correspondencias(banco, usuario):
         "A identidade do objeto precisa ser confirmada por uma pessoa."
     )
 
-    for pontuacao, notas, candidato in resultados[:5]:
+    for pontuacao, notas, candidato, candidato_id in resultados[:5]:
         with st.expander(
-            f"{pontuacao:.1f}/100 pontos — {candidato['nome']}"
+            f"{candidato['nome']}  /  {pontuacao:.1f} pontos de semelhança"
         ):
-            st.write("Situação:", candidato["tipo"])
-            st.write("Cor:", candidato["cor"])
-            st.write("Local:", candidato["local"])
-            st.write("Data:", candidato["data_ocorrido"])
-            st.write("Descrição:", candidato["descricao"])
+            coluna_origem, coluna_candidato = st.columns(2)
 
+            with coluna_origem:
+                st.caption("SEU CADASTRO")
+                st.write(f"{origem['tipo']} / {origem['categoria']}")
+                st.write("Nome:", origem["nome"])
+                st.write("Descrição:", origem["descricao"])
+                st.write("Cor:", origem["cor"])
+                st.write("Local:", origem["local"])
+                st.write("Data:", origem["data_ocorrido"])
+                st.caption("Código do cadastro:")
+                st.code(escolhido, language=None)
+
+                foto_origem = origem.get("foto_url", "")
+                if foto_origem and link_foto_valido(foto_origem):
+                    st.link_button("Ver foto do seu cadastro", foto_origem)
+
+            with coluna_candidato:
+                st.caption("POSSÍVEL CORRESPONDÊNCIA")
+                st.write(f"{candidato['tipo']} / {candidato['categoria']}")
+                st.write("Nome:", candidato["nome"])
+                st.write("Descrição:", candidato["descricao"])
+                st.write("Cor:", candidato["cor"])
+                st.write("Local:", candidato["local"])
+                st.write("Data:", candidato["data_ocorrido"])
+                st.caption("Código do cadastro:")
+                st.code(candidato_id, language=None)
+
+                foto_candidato = candidato.get("foto_url", "")
+                if foto_candidato and link_foto_valido(foto_candidato):
+                    st.link_button(
+                        "Ver foto da correspondência",
+                        foto_candidato,
+                    )
+
+            st.metric(
+                "Pontuação de semelhança textual",
+                f"{pontuacao:.1f}/100",
+            )
+            st.caption(
+                "A pontuação compara os dados informados. Ela não representa "
+                "uma probabilidade nem confirma que os objetos são o mesmo."
+            )
+
+            st.markdown("**Pontuação por critério**")
             st.table([
                 {"Critério": criterio, "Pontos": round(valor, 1)}
                 for criterio, valor in notas.items()

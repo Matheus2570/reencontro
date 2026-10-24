@@ -42,36 +42,57 @@ def mostrar_objetos(banco, usuario):
     st.subheader("Cadastrar objeto")
 
     with st.form("cadastro_objeto", clear_on_submit=True):
-        tipo = st.selectbox(
-            "Situação",
-            ["Perdido", "Encontrado"],
+        st.markdown(
+            '<div class="section-kicker">01 / Identificação</div>',
+            unsafe_allow_html=True,
         )
+
+        coluna_tipo, coluna_categoria = st.columns([1, 1.5])
+        with coluna_tipo:
+            tipo = st.selectbox(
+                "Situação",
+                ["Perdido", "Encontrado"],
+            )
+
+        with coluna_categoria:
+            categoria = st.selectbox(
+                "Categoria",
+                CATEGORIAS,
+            )
 
         nome = st.text_input(
             "Nome do objeto",
             max_chars=100,
         )
 
-        categoria = st.selectbox(
-            "Categoria",
-            CATEGORIAS,
+        st.markdown(
+            '<div class="section-kicker">02 / Onde e quando</div>',
+            unsafe_allow_html=True,
         )
 
-        cor = st.text_input(
-            "Cor",
-            max_chars=50,
-        )
+        coluna_cor, coluna_local = st.columns([1, 2])
+        with coluna_cor:
+            cor = st.text_input(
+                "Cor",
+                max_chars=50,
+            )
 
-        local = st.text_input(
-            "Local da perda ou encontro",
-            max_chars=150,
-        )
+        with coluna_local:
+            local = st.text_input(
+                "Local da perda ou encontro",
+                max_chars=150,
+            )
 
         data_ocorrido = st.date_input(
             "Data da perda ou encontro",
             value=date.today(),
             min_value=date(2000, 1, 1),
             max_value=date.today(),
+        )
+
+        st.markdown(
+            '<div class="section-kicker">03 / Detalhes para reconhecer</div>',
+            unsafe_allow_html=True,
         )
 
         descricao = st.text_area(
@@ -86,7 +107,10 @@ def mostrar_objetos(banco, usuario):
             help="Use um link de visualização que as pessoas possam abrir.",
         )
 
-        salvar = st.form_submit_button("Salvar objeto")
+        salvar = st.form_submit_button(
+            "Salvar objeto",
+            type="primary",
+        )
 
     if salvar:
         nome = nome.strip()
@@ -174,19 +198,36 @@ def mostrar_objetos(banco, usuario):
         return
 
     if not documentos:
-        st.info("Você ainda não cadastrou objetos.")
+        st.info(
+            "Seu catálogo ainda está vazio. Cadastre um objeto acima "
+            "para começar a busca por um reencontro."
+        )
         return
 
     for documento in documentos:
         item = documento.to_dict()
 
-        with st.expander(f"{item['tipo']} — {item['nome']}"):
-            st.write("Categoria:", item["categoria"])
-            st.write("Cor:", item["cor"])
-            st.write("Local:", item["local"])
-            st.write("Data:", item["data_ocorrido"])
-            st.write("Descrição:", item["descricao"])
-            st.write("Status:", item["status"])
+        with st.expander(f"{item['tipo']}  /  {item['nome']}"):
+            st.caption(item["categoria"])
+            st.write(item["descricao"])
+
+            coluna_local, coluna_data, coluna_cor = st.columns(3)
+            with coluna_local:
+                st.caption("LOCAL")
+                st.write(item["local"])
+            with coluna_data:
+                st.caption("DATA")
+                st.write(item["data_ocorrido"])
+            with coluna_cor:
+                st.caption("COR")
+                st.write(item["cor"])
+
+            if item["status"] == "resolvido":
+                st.success("Devolução concluída")
+            elif item["status"] == "aberto":
+                st.info("Aguardando devolução")
+            else:
+                st.caption(f"Status: {item['status']}")
 
             st.caption("Código do cadastro:")
             st.code(documento.id, language=None)
