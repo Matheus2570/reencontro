@@ -18,6 +18,17 @@ st.set_page_config(
     page_icon="🔎",
 )
 
+st.html("""
+<style>
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="stAppDeployButton"],
+    #MainMenu {
+        display: none !important;
+    }
+</style>
+""")
+
 
 @st.cache_resource
 def conectar_banco():
