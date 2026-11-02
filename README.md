@@ -29,8 +29,12 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 ## Funcionalidades
 
 - Login com RA e token.
-- Cadastro de objetos perdidos e encontrados.
-- Consulta dos próprios cadastros e seus códigos de identificação.
+- Cadastro de objetos perdidos pelos usuários.
+- Cadastro de encontrados exclusivo do administrador, após confirmar o recebimento físico no almoxarifado e informar o RA de quem encontrou.
+- Identificação separada de quem encontrou e de quem realizou o cadastro.
+- Consulta dos próprios cadastros em aberto e seus códigos de identificação.
+- Consulta administrativa dos objetos encontrados em aberto no almoxarifado.
+- Histórico pessoal de objetos recuperados e encontrados que já foram devolvidos; o administrador também pode consultar todas as devoluções.
 - Busca de possíveis correspondências por categoria, nome, descrição, local, cor e data.
 - Link opcional para visualizar uma foto no Google Drive.
 - Área administrativa para localizar um cadastro perdido pelo código e consultar candidatos encontrados, ordenados por semelhança.
@@ -40,10 +44,11 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 ## Como funciona a devolução
 
 1. O proprietário cadastra o objeto como **Perdido**.
-2. Quem encontrou cadastra o objeto como **Encontrado** e encaminha o objeto físico ao responsável do almoxarifado.
-3. O proprietário consulta as possíveis correspondências e apresenta o código de seu cadastro ao responsável.
-4. O responsável localiza o cadastro perdido na área administrativa, consulta os candidatos e confere o objeto físico e a propriedade.
-5. Após entregar o objeto, o responsável confirma a devolução no sistema. Os cadastros perdido e encontrado passam para **resolvido** juntos.
+2. Quem encontrou entrega o objeto físico ao responsável do almoxarifado.
+3. O administrador confirma o recebimento e cadastra o objeto como **Encontrado**, informando o RA de quem encontrou. Essa pessoa precisa ter um usuário cadastrado no Reencontro.
+4. O proprietário consulta as possíveis correspondências e apresenta o código de seu cadastro ao responsável.
+5. O responsável localiza o cadastro perdido na área administrativa, consulta os candidatos e confere o objeto físico e a propriedade.
+6. Após entregar o objeto, o responsável confirma a devolução no sistema. Os cadastros perdido e encontrado passam para **resolvido** juntos, saem das listagens de objetos em aberto e ficam disponíveis no histórico do proprietário e de quem encontrou. O administrador pode consultar todas as devoluções.
 
 A pontuação representa semelhança entre os dados cadastrados. **Não é uma probabilidade e não comprova que os objetos são o mesmo.** A entrega depende de conferência humana. Um código de cadastro identifica um registro; ele não é uma senha nem comprova a propriedade do objeto.
 
@@ -131,7 +136,11 @@ Para encerrar, pressione **Ctrl + C** no terminal.
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `app.py` | Configuração da interface, conexão com o Firebase, login e chamada dos módulos. |
-| `objetos.py` | Cadastro de objetos e listagem dos cadastros do usuário. |
+| `objetos.py` | Cadastro com validação de acesso, identificação de quem encontrou e listagem dos objetos em aberto. |
+| `acesso.py` | Validação de sessão e permissão nas operações de cadastro e devolução. |
+| `identificacao.py` | Exibição de RA e consulta dos vínculos antigos por UID, sem migração do banco. |
+| `historico.py` | Histórico pessoal e consulta administrativa de todas as devoluções, com paginação. |
+| `tests/test_fluxo.py` | Testes de permissões, devoluções, históricos e interface com banco simulado. |
 | `correspondencias.py` | Normalização dos textos, pontuação e busca de correspondências. |
 | `devolucoes.py` | Área administrativa, consulta de candidatos e confirmação da devolução. |
 | `cadastrar_grupo.py` | Cadastro inicial dos cinco integrantes e geração de tokens. |
@@ -177,8 +186,8 @@ O Firestore organiza os dados em **coleções e documentos**, em vez de tabelas 
 | Coleção | Conteúdo |
 | --- | --- |
 | `usuarios` | Nome, RA, identificador interno, situação do acesso, permissão, hash e versão do token. |
-| `itens` | Objetos perdidos e encontrados, características, autor e status. |
-| `devolucoes` | Vínculo entre os dois cadastros e registro da confirmação de entrega. |
+| `itens` | Objetos perdidos e encontrados, características, autor do cadastro, identificação de quem encontrou, recebimento no almoxarifado e status. |
+| `devolucoes` | Vínculo entre os cadastros, proprietário, pessoa que encontrou, responsáveis pelo cadastro e pela entrega, data e cópias dos dados dos objetos. |
 
 ## Acesso e limites da versão atual
 
@@ -186,10 +195,13 @@ O Firestore organiza os dados em **coleções e documentos**, em vez de tabelas 
 - Os tokens individuais são gerados aleatoriamente e seus hashes são armazenados no banco. A aplicação não utiliza CPF como senha.
 - O acesso administrativo no app depende da permissão do usuário registrada no banco. No cadastro inicial, Matheus de Carvalho possui essa permissão.
 - As regras do Firestore bloqueiam o acesso direto de clientes. O servidor usa o Admin SDK e valida as permissões no código Python; as regras não restringem esse SDK.
-- A listagem pessoal consulta até 50 cadastros. A busca do usuário consulta até 100 registros do tipo oposto, filtra os abertos da mesma categoria e mostra até cinco resultados com pelo menos 60 pontos.
+- A listagem pessoal consulta até 50 cadastros em aberto. A busca parte apenas de cadastros perdidos em aberto do usuário. A busca do usuário consulta até 100 registros do tipo oposto, filtra os abertos da mesma categoria e mostra até cinco resultados com pelo menos 60 pontos.
 - Na área administrativa, os candidatos abertos da mesma categoria são consultados e apresentados em páginas de dez opções. A paginação da interface não limita a consulta ao banco a dez registros.
 - A comparação tolera variações de maiúsculas, minúsculas, acentos e ordem das palavras, conforme os critérios utilizados. Não garante reconhecimento de todos os sinônimos ou descrições incompletas.
 - As fotos são links externos opcionais. Elas não são enviadas para o Firebase pelo app.
+- Os participantes são exibidos pelo RA. Nos registros antigos, o app consulta o RA na coleção `usuarios` pelo UID, sem regravar o histórico. Se o usuário não for localizado e não houver RA salvo, aparece “RA não localizado”. Os novos registros também guardam o RA dos participantes; os UIDs continuam como vínculos internos. As datas de devolução são exibidas em formato brasileiro e no horário de Brasília (UTC−3).
+- Os históricos consultam os registros de devolução e exibem dez por página. A paginação da interface não limita a leitura do banco a dez registros.
+- Registros antigos continuam compatíveis: quando não há identificação separada de quem encontrou, o vínculo anterior com o autor do cadastro é preservado. Devoluções antigas sem cópias dos objetos consultam os cadastros originais. Não há migração automática dos dados antigos.
 - A versão atual ainda não implementa limitação de tentativas de login ou notificações automáticas.
 
 ## Continuar o desenvolvimento em outra máquina
@@ -228,6 +240,16 @@ git ls-files -- .segredos .streamlit/secrets.toml
 ```
 
 O resultado esperado é vazio. O `.gitignore` não remove arquivos que já tenham sido versionados.
+
+## Testes locais
+
+Execute na pasta do projeto:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Os testes usam um banco simulado em memória e o AppTest do Streamlit. Não precisam de credenciais e não acessam nem alteram o Firebase real.
 
 ## Documentação de referência
 

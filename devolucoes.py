@@ -1,11 +1,11 @@
-import time
-
 import streamlit as st
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.api_core.exceptions import GoogleAPICallError
 from correspondencias import pontuar_objetos
 from objetos import link_foto_valido
+from acesso import validar_acesso
+from identificacao import identificar_pessoa
 
 
 def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
@@ -31,19 +31,7 @@ def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
             transaction=transacao, timeout=15
         ).to_dict() or {}
 
-        autorizado = (
-            usuario.get("ativo") is True
-            and usuario.get("permissao") == "admin"
-            and usuario.get("uid") == acesso["uid"]
-            and usuario.get("token_versao") == acesso["versao"]
-            and usuario.get("token_hash") == acesso["hash"]
-            and time.time() < acesso["expira_em"]
-        )
-
-        if not autorizado:
-            raise PermissionError(
-                "A confirmação exige um acesso de administrador válido."
-            )
+        validar_acesso(usuario, acesso, exigir_admin=True)
 
         if (
             perdido.get("tipo") != "Perdido"
@@ -82,7 +70,18 @@ def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
             "perdido_id": perdido_id,
             "encontrado_id": encontrado_id,
             "recebedor_uid": perdido["autor_uid"],
-            "encontrado_por_uid": encontrado["autor_uid"],
+            "encontrado_por_uid": encontrado.get("encontrado_por_uid", encontrado["autor_uid"]),
+            "recebedor_nome": perdido.get("autor_nome", ""),
+            "recebedor_ra": perdido.get("autor_ra", ""),
+            "encontrado_por_nome": encontrado.get("encontrado_por_nome", encontrado.get("autor_nome", "")),
+            "encontrado_por_ra": encontrado.get("encontrado_por_ra", ""),
+            "cadastrado_por_uid": encontrado.get("cadastrado_por_uid", encontrado["autor_uid"]),
+            "cadastrado_por_nome": encontrado.get("cadastrado_por_nome", encontrado.get("autor_nome", "")),
+            "cadastrado_por_ra": encontrado.get("cadastrado_por_ra", encontrado.get("autor_ra", "")),
+            "perdido": perdido,
+            "encontrado": encontrado,
+            "confirmado_por_nome": usuario["nome"],
+            "confirmado_por_ra": usuario["ra"],
             "confirmado_por_uid": usuario["uid"],
             "confirmado_em": firestore.SERVER_TIMESTAMP,
         })
@@ -90,13 +89,23 @@ def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
     confirmar(banco.transaction())
 
 
-def mostrar_detalhes(item, codigo):
+def mostrar_detalhes(item, codigo, banco=None, cache_pessoas=None):
     st.write("Nome:", item.get("nome", ""))
     st.write("Categoria:", item.get("categoria", ""))
     st.write("Cor:", item.get("cor", ""))
     st.write("Local:", item.get("local", ""))
     st.write("Data:", item.get("data_ocorrido", ""))
     st.write("Descrição:", item.get("descricao", ""))
+    if item.get("tipo") == "Encontrado":
+        st.write("Encontrado por:", identificar_pessoa(
+            banco, item.get("encontrado_por_uid") or item.get("autor_uid"),
+            item.get("encontrado_por_ra"), item.get("encontrado_por_nome"), cache_pessoas,
+        ))
+        st.write("Cadastrado por:", identificar_pessoa(
+            banco, item.get("cadastrado_por_uid") or item.get("autor_uid"),
+            item.get("cadastrado_por_ra") or item.get("autor_ra"),
+            item.get("cadastrado_por_nome") or item.get("autor_nome"), cache_pessoas,
+        ))
 
     st.caption("Código do cadastro:")
     st.code(codigo, language=None)
@@ -249,11 +258,11 @@ def mostrar_devolucoes(banco, usuario):
 
     with esquerda:
         st.subheader("Objeto perdido")
-        mostrar_detalhes(busca["perdido"], perdido_id)
+        mostrar_detalhes(busca["perdido"], perdido_id, banco)
 
     with direita:
         st.subheader("Objeto encontrado")
-        mostrar_detalhes(resultado["item"], escolhido)
+        mostrar_detalhes(resultado["item"], escolhido, banco)
 
     st.write(
         f"Pontuação de semelhança: "

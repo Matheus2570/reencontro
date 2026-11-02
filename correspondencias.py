@@ -60,6 +60,8 @@ def mostrar_correspondencias(banco, usuario):
             .where(
                 filter=FieldFilter("autor_uid", "==", usuario["uid"])
             )
+            .where(filter=FieldFilter("status", "==", "aberto"))
+            .where(filter=FieldFilter("tipo", "==", "Perdido"))
             .limit(50)
             .stream(timeout=15)
         )
@@ -74,7 +76,7 @@ def mostrar_correspondencias(banco, usuario):
     }
 
     if not meus_itens:
-        st.info("Cadastre um objeto para buscar correspondências.")
+        st.info("Cadastre um objeto perdido para buscar correspondências.")
         return
 
     with st.form("busca_correspondencias"):

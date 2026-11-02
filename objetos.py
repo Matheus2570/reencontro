@@ -5,6 +5,8 @@ import streamlit as st
 from firebase_admin import firestore
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.firestore_v1.base_query import FieldFilter
+from acesso import validar_acesso
+from identificacao import identificar_pessoa
 
 
 CATEGORIAS = [
@@ -37,15 +39,74 @@ def link_foto_valido(link):
         return False
 
 
+def registrar_objeto(banco, dados, acesso, encontrado_por_ra="", recebido=False):
+    tipo = dados.get("tipo")
+    if tipo not in {"Perdido", "Encontrado"}:
+        raise ValueError("Situação inválida.")
+    if tipo == "Encontrado":
+        if not recebido:
+            raise ValueError("Confirme o recebimento do objeto no almoxarifado.")
+        if not (len(encontrado_por_ra) == 7 and encontrado_por_ra.isascii()
+                and encontrado_por_ra.isdigit()):
+            raise ValueError("Informe o RA de sete dígitos de quem encontrou.")
+    if not acesso.get("ra"):
+        raise PermissionError("Entre novamente para continuar.")
+    referencia = banco.collection("itens").document()
+    usuario_ref = banco.collection("usuarios").document(acesso["ra"])
+
+    @firestore.transactional
+    def salvar(transacao):
+        usuario = usuario_ref.get(transaction=transacao, timeout=15).to_dict() or {}
+        validar_acesso(usuario, acesso, exigir_admin=tipo == "Encontrado")
+        encontrado_por = {}
+        if tipo == "Encontrado":
+            encontrado_por = (
+                banco.collection("usuarios").document(encontrado_por_ra)
+                .get(transaction=transacao, timeout=15).to_dict() or {}
+            )
+            if not encontrado_por.get("uid"):
+                raise ValueError("O RA de quem encontrou precisa estar cadastrado no sistema.")
+        registro = dict(dados)
+        registro.update({
+            "status": "aberto",
+            "autor_uid": usuario["uid"],
+            "autor_nome": usuario["nome"],
+            "autor_ra": usuario["ra"],
+            "cadastrado_por_uid": usuario["uid"],
+            "cadastrado_por_nome": usuario["nome"],
+            "cadastrado_por_ra": usuario["ra"],
+            "criado_em": firestore.SERVER_TIMESTAMP,
+        })
+        if tipo == "Encontrado":
+            registro.update({
+                "encontrado_por_uid": encontrado_por["uid"],
+                "encontrado_por_nome": encontrado_por["nome"],
+                "encontrado_por_ra": encontrado_por_ra,
+                "recebido_no_almoxarifado_em": firestore.SERVER_TIMESTAMP,
+            })
+        transacao.create(referencia, registro)
+    salvar(banco.transaction())
+    return referencia.id
+
+
 def mostrar_objetos(banco, usuario):
     st.divider()
     st.subheader("Cadastrar objeto")
 
-    with st.form("cadastro_objeto", clear_on_submit=True):
-        tipo = st.selectbox(
-            "Situação",
-            ["Perdido", "Encontrado"],
-        )
+    admin = usuario.get("permissao") == "admin"
+    tipo = st.selectbox("Situação", ["Perdido", "Encontrado"]) if admin else "Perdido"
+    if not admin:
+        st.caption("Cadastre seu objeto perdido. Se encontrou algo, entregue ao almoxarifado para o administrador cadastrar.")
+
+    with st.form(f"cadastro_objeto_{tipo}", clear_on_submit=True):
+        encontrado_por_ra = ""
+        recebido = False
+        if tipo == "Encontrado":
+            encontrado_por_ra = st.text_input(
+                "RA de quem encontrou o objeto", max_chars=7,
+                help="A pessoa que encontrou e entregou o objeto precisa estar cadastrada no sistema.",
+            )
+            recebido = st.checkbox("Recebi o objeto físico no almoxarifado.")
 
         nome = st.text_input(
             "Nome do objeto",
@@ -126,10 +187,9 @@ def mostrar_objetos(banco, usuario):
             for erro in erros:
                 st.warning(erro)
         else:
-            referencia = banco.collection("itens").document()
-
             try:
-                referencia.create(
+                codigo = registrar_objeto(
+                    banco,
                     {
                         "nome": nome,
                         "tipo": tipo,
@@ -139,22 +199,24 @@ def mostrar_objetos(banco, usuario):
                         "data_ocorrido": data_ocorrido.isoformat(),
                         "descricao": descricao,
                         "foto_url": foto_url,
-                        "status": "aberto",
-                        "autor_uid": usuario["uid"],
-                        "criado_em": firestore.SERVER_TIMESTAMP,
                     },
-                    timeout=15,
+                    dict(st.session_state.get("acesso", {})),
+                    encontrado_por_ra.strip(),
+                    recebido,
                 )
+            except (PermissionError, ValueError) as erro:
+                st.error(str(erro))
             except GoogleAPICallError:
                 st.error(
                     "Não foi possível confirmar o salvamento. "
                     "Confira seus cadastros antes de tentar novamente."
                 )
             else:
-                st.success("Objeto salvo no Firebase!")
+                st.success("Objeto cadastrado!")
+                st.code(codigo, language=None)
 
     st.subheader("Meus objetos")
-    st.caption("Exibindo até 50 dos seus cadastros.")
+    st.caption("Exibindo até 50 cadastros em aberto. Os devolvidos aparecem no histórico.")
 
     try:
         documentos = list(
@@ -166,6 +228,7 @@ def mostrar_objetos(banco, usuario):
                     usuario["uid"],
                 )
             )
+            .where(filter=FieldFilter("status", "==", "aberto"))
             .limit(50)
             .stream(timeout=15)
         )
@@ -174,24 +237,53 @@ def mostrar_objetos(banco, usuario):
         return
 
     if not documentos:
-        st.info("Você ainda não cadastrou objetos.")
-        return
-
+        st.info("Você não tem cadastros em aberto.")
+    cache_pessoas = {}
     for documento in documentos:
-        item = documento.to_dict()
+        mostrar_item(documento, banco, cache_pessoas)
 
-        with st.expander(f"{item['tipo']} — {item['nome']}"):
-            st.write("Categoria:", item["categoria"])
-            st.write("Cor:", item["cor"])
-            st.write("Local:", item["local"])
-            st.write("Data:", item["data_ocorrido"])
-            st.write("Descrição:", item["descricao"])
-            st.write("Status:", item["status"])
+    if admin:
+        st.subheader("Almoxarifado — objetos encontrados")
+        try:
+            encontrados = list(
+                banco.collection("itens")
+                .where(filter=FieldFilter("tipo", "==", "Encontrado"))
+                .where(filter=FieldFilter("status", "==", "aberto"))
+                .stream(timeout=15)
+            )
+        except GoogleAPICallError:
+            st.error("Não foi possível carregar o almoxarifado.")
+            return
+        if not encontrados:
+            st.info("Não há objetos encontrados em aberto.")
+        for documento in encontrados:
+            mostrar_item(documento, banco, cache_pessoas)
 
-            st.caption("Código do cadastro:")
-            st.code(documento.id, language=None)
 
-            link = item.get("foto_url", "")
+def mostrar_item(documento, banco=None, cache_pessoas=None):
+    item = documento.to_dict()
+    with st.expander(f"{item['tipo']} — {item['nome']}"):
+        st.write("Categoria:", item["categoria"])
+        st.write("Cor:", item["cor"])
+        st.write("Local:", item["local"])
+        st.write("Data:", item["data_ocorrido"])
+        st.write("Descrição:", item["descricao"])
+        st.write("Status:", item["status"])
+        if item.get("tipo") == "Encontrado":
+            st.write("Encontrado por:", identificar_pessoa(
+                banco, item.get("encontrado_por_uid") or item.get("autor_uid"),
+                item.get("encontrado_por_ra"), item.get("encontrado_por_nome"), cache_pessoas,
+            ))
+            st.write("Cadastrado por:", identificar_pessoa(
+                banco, item.get("cadastrado_por_uid") or item.get("autor_uid"),
+                item.get("cadastrado_por_ra") or item.get("autor_ra"),
+                item.get("cadastrado_por_nome") or item.get("autor_nome"), cache_pessoas,
+            ))
 
-            if link and link_foto_valido(link):
-                st.link_button("Ver foto", link)
+        st.caption("Código do cadastro:")
+        st.code(documento.id, language=None)
+
+        link = item.get("foto_url", "")
+
+        if link and link_foto_valido(link):
+            st.link_button("Ver foto", link)

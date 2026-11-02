@@ -11,6 +11,7 @@ import streamlit as st
 from objetos import mostrar_objetos
 from correspondencias import mostrar_correspondencias
 from devolucoes import mostrar_devolucoes
+from historico import mostrar_historico
 
 st.set_page_config(
     page_title="Reencontro",
@@ -140,10 +141,11 @@ with st.sidebar:
         st.rerun()
 
 st.write(
-    "Cadastre objetos perdidos ou encontrados "
+    "Cadastre objetos perdidos "
     "e busque correspondências."
 )
 
 mostrar_objetos(banco, usuario)
 mostrar_correspondencias(banco, usuario)
 mostrar_devolucoes(banco, usuario)
+mostrar_historico(banco, usuario)
