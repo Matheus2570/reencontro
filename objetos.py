@@ -7,6 +7,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.firestore_v1.base_query import FieldFilter
 from acesso import validar_acesso
 from identificacao import identificar_pessoa
+from pesquisa import corresponde_pesquisa
 
 
 CATEGORIAS = [
@@ -216,7 +217,7 @@ def mostrar_objetos(banco, usuario):
                 st.code(codigo, language=None)
 
     st.subheader("Meus objetos")
-    st.caption("Exibindo até 50 cadastros em aberto. Os devolvidos aparecem no histórico.")
+    st.caption("Cadastros em aberto. Os devolvidos aparecem no histórico.")
 
     try:
         documentos = list(
@@ -229,7 +230,6 @@ def mostrar_objetos(banco, usuario):
                 )
             )
             .where(filter=FieldFilter("status", "==", "aberto"))
-            .limit(50)
             .stream(timeout=15)
         )
     except GoogleAPICallError:
@@ -239,8 +239,7 @@ def mostrar_objetos(banco, usuario):
     if not documentos:
         st.info("Você não tem cadastros em aberto.")
     cache_pessoas = {}
-    for documento in documentos:
-        mostrar_item(documento, banco, cache_pessoas)
+    mostrar_lista_objetos(documentos, banco, cache_pessoas, "meus_objetos", "Pesquisar em meus objetos")
 
     if admin:
         st.subheader("Almoxarifado — objetos encontrados")
@@ -256,8 +255,25 @@ def mostrar_objetos(banco, usuario):
             return
         if not encontrados:
             st.info("Não há objetos encontrados em aberto.")
-        for documento in encontrados:
-            mostrar_item(documento, banco, cache_pessoas)
+        mostrar_lista_objetos(encontrados, banco, cache_pessoas, "almoxarifado", "Pesquisar no almoxarifado")
+
+
+def mostrar_lista_objetos(documentos, banco, cache_pessoas, chave, rotulo):
+    termo = st.text_input(rotulo, key=f"pesquisa_{chave}",
+                          placeholder="Nome, descrição, categoria, cor, local, RA ou código")
+    filtrados = [doc for doc in documentos if corresponde_pesquisa(doc.id, doc.to_dict(), termo)]
+    st.caption(f"{len(filtrados)} de {len(documentos)} objetos.")
+    if not filtrados:
+        if documentos:
+            st.info("Nenhum objeto corresponde à pesquisa.")
+        return
+    pagina = st.selectbox(
+        "Página de objetos" if chave == "meus_objetos" else "Página do almoxarifado",
+        range(1, (len(filtrados) + 9) // 10 + 1),
+        key=f"pagina_{chave}_{termo}_{len(filtrados)}",
+    )
+    for documento in filtrados[(pagina - 1) * 10:pagina * 10]:
+        mostrar_item(documento, banco, cache_pessoas)
 
 
 def mostrar_item(documento, banco=None, cache_pessoas=None):

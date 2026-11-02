@@ -33,6 +33,7 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 - Cadastro de encontrados exclusivo do administrador, após confirmar o recebimento físico no almoxarifado e informar o RA de quem encontrou.
 - Identificação separada de quem encontrou e de quem realizou o cadastro.
 - Consulta dos próprios cadastros em aberto e seus códigos de identificação.
+- Pesquisa independente em Meus objetos, almoxarifado, seleção do objeto para comparar, candidatos à devolução e histórico. A busca ignora acentos e maiúsculas e considera todas as palavras, independentemente da ordem. As listas de objetos, candidatos e histórico exibem dez registros por página, depois de aplicar o filtro.
 - Consulta administrativa dos objetos encontrados em aberto no almoxarifado.
 - Histórico pessoal de objetos recuperados e encontrados que já foram devolvidos; o administrador também pode consultar todas as devoluções.
 - Busca de possíveis correspondências por categoria, nome, descrição, local, cor e data.
@@ -138,6 +139,7 @@ Para encerrar, pressione **Ctrl + C** no terminal.
 | `app.py` | Configuração da interface, conexão com o Firebase, login e chamada dos módulos. |
 | `objetos.py` | Cadastro com validação de acesso, identificação de quem encontrou e listagem dos objetos em aberto. |
 | `acesso.py` | Validação de sessão e permissão nas operações de cadastro e devolução. |
+| `pesquisa.py` | Normalização dos textos e pesquisa nos campos públicos dos registros. |
 | `identificacao.py` | Exibição de RA e consulta dos vínculos antigos por UID, sem migração do banco. |
 | `historico.py` | Histórico pessoal e consulta administrativa de todas as devoluções, com paginação. |
 | `tests/test_fluxo.py` | Testes de permissões, devoluções, históricos e interface com banco simulado. |
@@ -195,7 +197,7 @@ O Firestore organiza os dados em **coleções e documentos**, em vez de tabelas 
 - Os tokens individuais são gerados aleatoriamente e seus hashes são armazenados no banco. A aplicação não utiliza CPF como senha.
 - O acesso administrativo no app depende da permissão do usuário registrada no banco. No cadastro inicial, Matheus de Carvalho possui essa permissão.
 - As regras do Firestore bloqueiam o acesso direto de clientes. O servidor usa o Admin SDK e valida as permissões no código Python; as regras não restringem esse SDK.
-- A listagem pessoal consulta até 50 cadastros em aberto. A busca parte apenas de cadastros perdidos em aberto do usuário. A busca do usuário consulta até 100 registros do tipo oposto, filtra os abertos da mesma categoria e mostra até cinco resultados com pelo menos 60 pontos.
+- A listagem pessoal e a seleção para comparação consultam os cadastros em aberto autorizados ao usuário, sem limite de 50 registros, para que a pesquisa considere a lista inteira. A busca de correspondências parte apenas de cadastros perdidos em aberto do usuário. A busca do usuário consulta até 100 registros do tipo oposto, filtra os abertos da mesma categoria e mostra até cinco resultados com pelo menos 60 pontos.
 - Na área administrativa, os candidatos abertos da mesma categoria são consultados e apresentados em páginas de dez opções. A paginação da interface não limita a consulta ao banco a dez registros.
 - A comparação tolera variações de maiúsculas, minúsculas, acentos e ordem das palavras, conforme os critérios utilizados. Não garante reconhecimento de todos os sinônimos ou descrições incompletas.
 - As fotos são links externos opcionais. Elas não são enviadas para o Firebase pelo app.

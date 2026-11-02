@@ -6,6 +6,7 @@ from correspondencias import pontuar_objetos
 from objetos import link_foto_valido
 from acesso import validar_acesso
 from identificacao import identificar_pessoa
+from pesquisa import corresponde_pesquisa
 
 
 def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
@@ -216,16 +217,23 @@ def mostrar_devolucoes(banco, usuario):
         st.info("Não há objetos encontrados abertos nessa categoria.")
         return
 
-    st.write(
-        f"{len(ranking)} candidatos, ordenados pela semelhança."
+    termo = st.text_input(
+        "Pesquisar candidatos encontrados", key=f"pesquisa_candidatos_{perdido_id}",
+        placeholder="Nome, descrição, cor, local, RA ou código",
     )
+    total = len(ranking)
+    ranking = [r for r in ranking if corresponde_pesquisa(r["id"], r["item"], termo)]
+    st.write(f"{len(ranking)} de {total} candidatos, ordenados pela semelhança.")
+    if not ranking:
+        st.info("Nenhum candidato corresponde à pesquisa.")
+        return
 
     quantidade_paginas = (len(ranking) + 9) // 10
 
     pagina = st.selectbox(
         "Página de candidatos",
         options=list(range(1, quantidade_paginas + 1)),
-        key=f"pagina_admin_{perdido_id}",
+        key=f"pagina_admin_{perdido_id}_{termo}_{len(ranking)}",
     )
 
     inicio = (pagina - 1) * 10
@@ -246,7 +254,7 @@ def mostrar_devolucoes(banco, usuario):
             f"{opcoes[chave]['item']['local']} — "
             f"Código: {chave}"
         ),
-        key=f"candidato_admin_{perdido_id}_{pagina}",
+        key=f"candidato_admin_{perdido_id}_{pagina}_{termo}",
     )
 
     if escolhido is None:

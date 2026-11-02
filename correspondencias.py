@@ -1,6 +1,4 @@
 from datetime import date
-import re
-import unicodedata
 
 import streamlit as st
 from rapidfuzz import fuzz
@@ -8,14 +6,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 
-def normalizar(texto):
-    texto = unicodedata.normalize("NFKD", texto.casefold())
-    texto = "".join(
-        letra for letra in texto
-        if not unicodedata.combining(letra)
-    )
-    texto = re.sub(r"[^a-z0-9\s]", " ", texto)
-    return " ".join(texto.split())
+from pesquisa import normalizar, corresponde_pesquisa
 
 
 def pontuar_objetos(origem, candidato):
@@ -62,7 +53,6 @@ def mostrar_correspondencias(banco, usuario):
             )
             .where(filter=FieldFilter("status", "==", "aberto"))
             .where(filter=FieldFilter("tipo", "==", "Perdido"))
-            .limit(50)
             .stream(timeout=15)
         )
     except GoogleAPICallError:
@@ -77,6 +67,16 @@ def mostrar_correspondencias(banco, usuario):
 
     if not meus_itens:
         st.info("Cadastre um objeto perdido para buscar correspondências.")
+        return
+
+    termo = st.text_input(
+        "Pesquisar objeto para comparar", key="pesquisa_comparar",
+        placeholder="Nome, descrição, cor, local ou código",
+    )
+    meus_itens = {codigo: item for codigo, item in meus_itens.items()
+                  if corresponde_pesquisa(codigo, item, termo)}
+    if not meus_itens:
+        st.info("Nenhum objeto corresponde à pesquisa.")
         return
 
     with st.form("busca_correspondencias"):

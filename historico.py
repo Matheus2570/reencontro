@@ -6,6 +6,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from devolucoes import mostrar_detalhes
 from identificacao import identificar_pessoa
+from pesquisa import corresponde_pesquisa
 
 
 def carregar_historico(banco, usuario, todas=False):
@@ -53,12 +54,46 @@ def mostrar_historico(banco, usuario):
     if not registros:
         st.info("Nenhuma devolução registrada." if todas else "Você ainda não participou de uma devolução.")
         return
-    st.caption(f"{len(registros)} devoluções. Exibindo dez por página, das mais recentes para as mais antigas.")
-    pagina = st.selectbox(
-        "Página do histórico", range(1, (len(registros) + 9) // 10 + 1),
-        key=f"historico_pagina_{usuario['uid']}_{todas}_{len(registros)}",
+    termo = st.text_input(
+        "Pesquisar no histórico", key=f"pesquisa_historico_{usuario['uid']}_{todas}",
+        placeholder="Objeto, descrição, RA, nome da pessoa ou código",
     )
     cache_pessoas = {}
+    total = len(registros)
+    if termo.strip():
+        filtrados = []
+        try:
+            for codigo, registro in registros:
+                registro = dict(registro)
+                for campo in ("perdido", "encontrado"):
+                    if registro.get(campo) is None:
+                        registro[campo] = banco.collection("itens").document(registro[f"{campo}_id"]).get(timeout=15).to_dict() or {}
+                perdido, encontrado = registro["perdido"], registro["encontrado"]
+                registro["participantes"] = " ".join(
+                    identificar_pessoa(banco, registro.get(f"{campo}_uid") or uid,
+                                       registro.get(f"{campo}_ra") or ra,
+                                       cache=cache_pessoas)
+                    for campo, uid, ra in (
+                        ("recebedor", perdido.get("autor_uid"), perdido.get("autor_ra")),
+                        ("encontrado_por", encontrado.get("encontrado_por_uid") or encontrado.get("autor_uid"), encontrado.get("encontrado_por_ra")),
+                        ("cadastrado_por", encontrado.get("cadastrado_por_uid") or encontrado.get("autor_uid"), encontrado.get("cadastrado_por_ra") or encontrado.get("autor_ra")),
+                        ("confirmado_por", None, None),
+                    )
+                )
+                if corresponde_pesquisa(codigo, registro, termo):
+                    filtrados.append((codigo, registro))
+        except GoogleAPICallError:
+            st.error("Não foi possível pesquisar os detalhes do histórico.")
+            return
+        registros = filtrados
+    if not registros:
+        st.info("Nenhuma devolução corresponde à pesquisa.")
+        return
+    st.caption(f"{len(registros)} de {total} devoluções. Exibindo dez por página, das mais recentes para as mais antigas.")
+    pagina = st.selectbox(
+        "Página do histórico", range(1, (len(registros) + 9) // 10 + 1),
+        key=f"historico_pagina_{usuario['uid']}_{todas}_{termo}_{len(registros)}",
+    )
     for codigo, registro in registros[(pagina - 1) * 10:pagina * 10]:
         try:
             # Devoluções antigas não têm cópias dos dados dos objetos.

@@ -10,6 +10,7 @@ from objetos import registrar_objeto
 from devolucoes import confirmar_devolucao
 from historico import carregar_historico, formatar_data_devolucao
 from identificacao import identificar_pessoa
+from pesquisa import corresponde_pesquisa
 
 
 class Documento:
@@ -272,6 +273,91 @@ mostrar_historico(banco, usuario)
         self.assertEqual(identificar_pessoa(self.banco, "usuario-excluido", "5555555"), "RA 5555555")
         self.assertFalse(self.banco.dados["itens"])
         self.assertFalse(self.banco.dados["devolucoes"])
+
+    def test_pesquisa_sem_acentos_ordem_e_campos_privados(self):
+        dados = dict(nome="Óculos marrom", local="Biblioteca", autor_ra="2222222", token_hash="SEGREDO")
+        self.assertTrue(corresponde_pesquisa("codigo-123", dados, "BIBLIOTECA oculos"))
+        self.assertTrue(corresponde_pesquisa("codigo-123", dados, "2222222"))
+        self.assertTrue(corresponde_pesquisa("codigo-123", dados, "codigo-123"))
+        self.assertFalse(corresponde_pesquisa("codigo-123", dados, "SEGREDO"))
+        self.assertFalse(corresponde_pesquisa("codigo-123", dados, "oculos azul"))
+
+    def test_pesquisa_meus_objetos_acima_de_50_sem_mostrar_outros_usuarios(self):
+        for numero in range(51):
+            self.banco.dados["itens"][f"item-{numero:02d}"] = dict(
+                self.item, autor_uid=self.dono["uid"], status="aberto",
+                nome="Óculos especial" if numero == 50 else "Garrafa comum",
+            )
+        self.banco.dados["itens"]["outro-usuario"] = dict(
+            self.item, autor_uid=self.outro["uid"], status="aberto", nome="Óculos privado",
+        )
+        app = self.tela(self.dono)
+        pagina = next(s for s in app.selectbox if s.label == "Página de objetos")
+        pagina.set_value(3).run()
+        app.text_input(key="pesquisa_meus_objetos").set_value("OCULOS").run()
+        self.assertFalse(app.exception)
+        self.assertEqual([e.label for e in app.expander], ["Perdido — Óculos especial"])
+        self.assertEqual(next(s for s in app.selectbox if s.label == "Página de objetos").value, 1)
+        app.text_input(key="pesquisa_meus_objetos").set_value("inexistente").run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.expander)
+
+    def test_pesquisas_das_listas_sao_independentes(self):
+        self.cadastrar_par()
+        app = self.tela(self.admin)
+        app.text_input(key="pesquisa_meus_objetos").set_value("inexistente").run()
+        self.assertEqual(len(app.expander), 1)  # O almoxarifado não foi filtrado.
+        app.text_input(key="pesquisa_almoxarifado").set_value("inexistente").run()
+        self.assertFalse(app.expander)
+        self.assertFalse(app.exception)
+
+    def test_pesquisa_candidatos_antes_da_paginacao_e_limpa_selecao(self):
+        perdido, encontrado = self.cadastrar_par()
+        for numero in range(12):
+            self.banco.dados["itens"][f"candidato-{numero}"] = dict(
+                self.banco.dados["itens"][encontrado], nome=f"Garrafa comum {numero}",
+            )
+        app = self.tela(self.admin)
+        next(t for t in app.text_input if t.label == "Código do cadastro perdido").set_value(perdido)
+        next(b for b in app.button if b.label == "Buscar objetos encontrados").click().run()
+        next(s for s in app.selectbox if s.label == "Página de candidatos").set_value(2).run()
+        next(t for t in app.text_input if t.label == "Pesquisar candidatos encontrados").set_value(encontrado).run()
+        self.assertFalse(app.exception)
+        seletor = next(s for s in app.selectbox if s.label == "Objeto encontrado para conferir")
+        self.assertEqual(len(seletor.options), 1)
+        self.assertIsNone(seletor.value)
+        self.assertEqual(next(s for s in app.selectbox if s.label == "Página de candidatos").value, 1)
+        seletor.set_value(encontrado).run()
+        next(t for t in app.text_input if t.label == "Pesquisar candidatos encontrados").set_value("inexistente").run()
+        self.assertFalse(app.exception)
+        self.assertFalse(any(b.label == "Confirmar devolução" for b in app.button))
+
+    def test_pesquisa_historico_considera_todas_as_paginas(self):
+        self.devolver()
+        original = next(iter(self.banco.dados["devolucoes"].values()))
+        for numero in range(12):
+            registro = copy.deepcopy(original)
+            registro["perdido"]["nome"] = "Óculos exclusivo" if numero == 0 else "Garrafa comum"
+            self.banco.dados["devolucoes"][f"registro-{numero:02d}"] = registro
+        app = self.tela(self.dono)
+        next(s for s in app.selectbox if s.label == "Página do histórico").set_value(2).run()
+        next(t for t in app.text_input if t.label == "Pesquisar no histórico").set_value("oculos exclusivo").run()
+        self.assertFalse(app.exception)
+        self.assertEqual(len(app.expander), 1)
+        self.assertIn("Óculos exclusivo", app.expander[0].label)
+        self.assertEqual(next(s for s in app.selectbox if s.label == "Página do histórico").value, 1)
+        next(t for t in app.text_input if t.label == "Pesquisar no histórico").set_value("3333333").run()
+        self.assertFalse(app.exception)
+        self.assertEqual(len(app.expander), 10)
+
+    def test_pesquisa_objeto_para_comparar(self):
+        self.cadastrar_par()
+        app = self.tela(self.dono)
+        app.text_input(key="pesquisa_comparar").set_value("inexistente").run()
+        self.assertFalse(app.exception)
+        self.assertFalse(any(s.label == "Qual dos seus objetos você quer comparar?" for s in app.selectbox))
+        # A pesquisa da comparação não altera a lista Meus objetos.
+        self.assertEqual(len(app.expander), 1)
 
     def test_interface_historico_antigo_sem_copias(self):
         par = self.cadastrar_par()
