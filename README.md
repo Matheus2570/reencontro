@@ -35,6 +35,8 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 - Consulta dos próprios cadastros em aberto e seus códigos de identificação.
 - Pesquisa independente em Meus objetos, almoxarifado, seleção do objeto para comparar, candidatos à devolução e histórico. A busca ignora acentos e maiúsculas e considera todas as palavras, independentemente da ordem. As listas de objetos, candidatos e histórico exibem dez registros por página, depois de aplicar o filtro.
 - Consulta administrativa dos objetos encontrados em aberto no almoxarifado.
+- Seção **Gerenciar objetos**, exclusiva para administradores: consulta de perdidos e encontrados de todos os usuários, busca por nome, RA ou código, filtros por tipo e situação e paginação. Itens em aberto podem ser corrigidos usando as mesmas validações do cadastro, preservando código, autoria e identificação de quem cadastrou/encontrou.
+- **Remover item** exige confirmação com nome e código e arquiva o cadastro sem apagar seus dados. O administrador pode encontrá-lo pelo filtro **Arquivado** e usar **Restaurar item**. Arquivados saem das listas e buscas normais; itens devolvidos ou vinculados a uma devolução ficam apenas para consulta.
 - Histórico pessoal de objetos recuperados e encontrados que já foram devolvidos; o administrador também pode consultar todas as devoluções.
 - Busca de possíveis correspondências por categoria, nome, descrição, local, cor e data.
 - Link opcional para visualizar uma foto no Google Drive.
@@ -56,6 +58,8 @@ A compatibilidade das características é avaliada separadamente da similaridade
 Novos cadastros aceitam marca e modelo opcionais, além de campos por categoria (capacidade e material para recipientes; rodinhas e tamanho para mochilas/acessórios; conexão e formato para fones/eletrônicos). Deixe em branco o que não souber. Os documentos antigos são interpretados apenas em memória, usando detalhes explícitos e inequívocos: cor identificável, capacidade com unidade, tipos reconhecidos, marca junto ao tipo do objeto ou rotulada e modelo rotulado. Valores ambíguos continuam ausentes; campos estruturados têm prioridade. Capacidades equivalentes, acentos e variações previstas são normalizados. Não há migração nem regravação dos registros existentes.
 
 A nota textual/de contexto usa descrição (40%), nome (30%), local (20%) e data (10%). **Não é uma probabilidade e não comprova que os objetos são o mesmo.** A entrega depende de conferência humana. Um código de cadastro identifica um registro; ele não é uma senha nem comprova a propriedade do objeto.
+
+Em **Gerenciar objetos**, selecione o item para conferir seus dados e corrigir os campos. A categoria controla as características opcionais exibidas. A edição não troca o tipo (Perdido/Encontrado), o proprietário nem quem cadastrou/encontrou o objeto. Cada alteração registra o administrador responsável e a data no documento. A autorização é conferida novamente no Python, com a sessão e permissão atuais, dentro da transação. Se outro administrador alterar o item durante a edição, use **Atualizar lista** para conferir os dados antes de tentar novamente. O gerenciamento não modifica os registros da coleção de devoluções.
 
 ## Requisitos para executar localmente
 
@@ -142,11 +146,14 @@ Para encerrar, pressione **Ctrl + C** no terminal.
 | --- | --- |
 | `app.py` | Configuração da interface, conexão com o Firebase, login e chamada dos módulos. |
 | `objetos.py` | Cadastro com validação de acesso, identificação de quem encontrou e listagem dos objetos em aberto. |
+| `formulario_objeto.py` | Campos, categorias e validações compartilhados pelo cadastro e gerenciamento. |
+| `gerenciamento.py` | Consulta administrativa global, edição de itens em aberto, arquivamento reversível e restauração com autorização em transação. |
 | `acesso.py` | Validação de sessão e permissão nas operações de cadastro e devolução. |
 | `pesquisa.py` | Normalização dos textos e pesquisa nos campos públicos dos registros. |
 | `identificacao.py` | Exibição de RA e consulta dos vínculos antigos por UID, sem migração do banco. |
 | `historico.py` | Histórico pessoal e consulta administrativa de todas as devoluções, com paginação. |
 | `tests/test_fluxo.py` | Testes de permissões, devoluções, históricos e interface com banco simulado. |
+| `tests/test_gerenciamento.py` | Testes de gestão, autorização, validação compartilhada, conflitos de edição e interface com banco simulado. |
 | `correspondencias.py` | Normalização dos textos, pontuação e busca de correspondências. |
 | `caracteristicas.py` | Campos opcionais por categoria, extração conservadora de legados e comparação de características. |
 | `devolucoes.py` | Área administrativa, consulta de candidatos e confirmação da devolução. |

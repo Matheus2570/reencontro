@@ -12,6 +12,7 @@ from objetos import mostrar_objetos
 from correspondencias import mostrar_correspondencias
 from devolucoes import mostrar_devolucoes
 from historico import mostrar_historico
+from gerenciamento import mostrar_gerenciamento
 
 st.set_page_config(
     page_title="Reencontro",
@@ -157,6 +158,7 @@ st.write(
 )
 
 mostrar_objetos(banco, usuario)
+mostrar_gerenciamento(banco, usuario)
 mostrar_correspondencias(banco, usuario)
 mostrar_devolucoes(banco, usuario)
 mostrar_historico(banco, usuario)

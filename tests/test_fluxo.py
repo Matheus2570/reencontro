@@ -185,8 +185,10 @@ from objetos import mostrar_objetos
 from correspondencias import mostrar_correspondencias
 from devolucoes import mostrar_devolucoes
 from historico import mostrar_historico
+from gerenciamento import mostrar_gerenciamento
 banco, usuario = st.session_state['banco'], st.session_state['usuario']
 mostrar_objetos(banco, usuario)
+mostrar_gerenciamento(banco, usuario)
 mostrar_correspondencias(banco, usuario)
 mostrar_devolucoes(banco, usuario)
 mostrar_historico(banco, usuario)

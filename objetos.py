@@ -1,5 +1,4 @@
 from datetime import date
-from urllib.parse import urlsplit
 
 import streamlit as st
 from firebase_admin import firestore
@@ -8,40 +7,12 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from acesso import validar_acesso
 from identificacao import identificar_pessoa
 from pesquisa import corresponde_pesquisa
-from caracteristicas import CAMPOS_COMUNS, CAMPOS_CATEGORIA, ROTULOS, OPCOES, canonico
-
-
-CATEGORIAS = [
-    "Eletrônicos",
-    "Material escolar",
-    "Documentos",
-    "Roupas e acessórios",
-    "Garrafas e recipientes",
-    "Chaves",
-    "Outros",
-]
-
-
-def link_foto_valido(link):
-    if not link:
-        return True
-
-    try:
-        endereco = urlsplit(link)
-
-        return (
-            endereco.scheme == "https"
-            and endereco.netloc in {
-                "drive.google.com",
-                "docs.google.com",
-            }
-            and bool(endereco.path)
-        )
-    except ValueError:
-        return False
+from caracteristicas import ROTULOS
+from formulario_objeto import CATEGORIAS, campos_caracteristicas, validar_dados_objeto, link_foto_valido
 
 
 def registrar_objeto(banco, dados, acesso, encontrado_por_ra="", recebido=False):
+    dados = validar_dados_objeto(dados)
     tipo = dados.get("tipo")
     if tipo not in {"Perdido", "Encontrado"}:
         raise ValueError("Situação inválida.")
@@ -117,17 +88,7 @@ def mostrar_objetos(banco, usuario):
             max_chars=100,
         )
 
-        st.caption("Características opcionais: preencha apenas o que souber com certeza.")
-        caracteristicas = {}
-        for campo in CAMPOS_COMUNS + CAMPOS_CATEGORIA[categoria]:
-            chave = f"caracteristica_{tipo}_{categoria}_{campo}"
-            if campo in OPCOES:
-                valor = st.selectbox(ROTULOS[campo], OPCOES[campo], key=chave,
-                                     format_func=lambda v: v or "Não informado")
-            else:
-                valor = st.text_input(ROTULOS[campo] + " — opcional", max_chars=100, key=chave)
-            if valor.strip():
-                caracteristicas[campo] = valor.strip()
+        caracteristicas = campos_caracteristicas(categoria, f"caracteristica_{tipo}_{categoria}")
 
         cor = st.text_input(
             "Cor",
@@ -167,34 +128,14 @@ def mostrar_objetos(banco, usuario):
         descricao = descricao.strip()
         foto_url = foto_url.strip()
 
-        erros = []
-        if "capacidade" in caracteristicas and not canonico("capacidade", caracteristicas["capacidade"]):
-            erros.append("Capacidade: informe um valor positivo em ml ou L, como 750 ml ou 1,2 L.")
-
-        for rotulo, valor, minimo, maximo in [
-            ("Nome", nome, 3, 100),
-            ("Cor", cor, 2, 50),
-            ("Local", local, 3, 150),
-            ("Descrição", descricao, 10, 1000),
-        ]:
-            if not minimo <= len(valor) <= maximo:
-                erros.append(
-                    f"{rotulo}: use entre {minimo} e {maximo} caracteres."
-                )
-
-        if tipo not in ["Perdido", "Encontrado"]:
-            erros.append("Situação inválida.")
-
-        if categoria not in CATEGORIAS:
-            erros.append("Categoria inválida.")
-
-        if not date(2000, 1, 1) <= data_ocorrido <= date.today():
-            erros.append("Confira a data informada.")
-
-        if len(foto_url) > 1000 or not link_foto_valido(foto_url):
-            erros.append(
-                "Use um link HTTPS do Google Drive ou deixe vazio."
-            )
+        dados = dict(nome=nome, tipo=tipo, categoria=categoria, cor=cor, local=local,
+                     data_ocorrido=data_ocorrido.isoformat(), descricao=descricao,
+                     foto_url=foto_url, caracteristicas=caracteristicas)
+        try:
+            validar_dados_objeto(dados)
+            erros = []
+        except ValueError as erro:
+            erros = str(erro).splitlines()
 
         if erros:
             for erro in erros:
@@ -203,17 +144,7 @@ def mostrar_objetos(banco, usuario):
             try:
                 codigo = registrar_objeto(
                     banco,
-                    {
-                        "nome": nome,
-                        "tipo": tipo,
-                        "categoria": categoria,
-                        "cor": cor,
-                        "local": local,
-                        "data_ocorrido": data_ocorrido.isoformat(),
-                        "descricao": descricao,
-                        "foto_url": foto_url,
-                        "caracteristicas": caracteristicas,
-                    },
+                    dados,
                     dict(st.session_state.get("acesso", {})),
                     encontrado_por_ra.strip(),
                     recebido,
