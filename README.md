@@ -38,7 +38,7 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 - Histórico pessoal de objetos recuperados e encontrados que já foram devolvidos; o administrador também pode consultar todas as devoluções.
 - Busca de possíveis correspondências por categoria, nome, descrição, local, cor e data.
 - Link opcional para visualizar uma foto no Google Drive.
-- Área administrativa para localizar um cadastro perdido pelo código e consultar candidatos encontrados, ordenados por semelhança.
+- Área administrativa para localizar um cadastro perdido pelo código e consultar candidatos encontrados, priorizando compatibilidade das características antes da similaridade textual.
 - Confirmação da devolução pelo administrador, resolvendo os dois cadastros e registrando a operação em uma transação.
 - Troca de tokens por script administrativo.
 
@@ -51,7 +51,11 @@ Projeto acadêmico de achados e perdidos. O Reencontro permite cadastrar objetos
 5. O responsável localiza o cadastro perdido na área administrativa, consulta os candidatos e confere o objeto físico e a propriedade.
 6. Após entregar o objeto, o responsável confirma a devolução no sistema. Os cadastros perdido e encontrado passam para **resolvido** juntos, saem das listagens de objetos em aberto e ficam disponíveis no histórico do proprietário e de quem encontrou. O administrador pode consultar todas as devoluções.
 
-A pontuação representa semelhança entre os dados cadastrados. **Não é uma probabilidade e não comprova que os objetos são o mesmo.** A entrega depende de conferência humana. Um código de cadastro identifica um registro; ele não é uma senha nem comprova a propriedade do objeto.
+A compatibilidade das características é avaliada separadamente da similaridade textual e de contexto. Informação ausente não conta como acordo nem como divergência. Qualquer divergência explícita coloca o candidato abaixo dos candidatos sem divergências, mesmo com texto quase idêntico; a interface mostra quais valores divergem. Dentro desses grupos, a ordenação considera a quantidade de características compatíveis, a quantidade de divergências, a nota textual/de contexto e o código para desempatar.
+
+Novos cadastros aceitam marca e modelo opcionais, além de campos por categoria (capacidade e material para recipientes; rodinhas e tamanho para mochilas/acessórios; conexão e formato para fones/eletrônicos). Deixe em branco o que não souber. Os documentos antigos são interpretados apenas em memória, usando detalhes explícitos e inequívocos: cor identificável, capacidade com unidade, tipos reconhecidos, marca junto ao tipo do objeto ou rotulada e modelo rotulado. Valores ambíguos continuam ausentes; campos estruturados têm prioridade. Capacidades equivalentes, acentos e variações previstas são normalizados. Não há migração nem regravação dos registros existentes.
+
+A nota textual/de contexto usa descrição (40%), nome (30%), local (20%) e data (10%). **Não é uma probabilidade e não comprova que os objetos são o mesmo.** A entrega depende de conferência humana. Um código de cadastro identifica um registro; ele não é uma senha nem comprova a propriedade do objeto.
 
 ## Requisitos para executar localmente
 
@@ -144,6 +148,7 @@ Para encerrar, pressione **Ctrl + C** no terminal.
 | `historico.py` | Histórico pessoal e consulta administrativa de todas as devoluções, com paginação. |
 | `tests/test_fluxo.py` | Testes de permissões, devoluções, históricos e interface com banco simulado. |
 | `correspondencias.py` | Normalização dos textos, pontuação e busca de correspondências. |
+| `caracteristicas.py` | Campos opcionais por categoria, extração conservadora de legados e comparação de características. |
 | `devolucoes.py` | Área administrativa, consulta de candidatos e confirmação da devolução. |
 | `cadastrar_grupo.py` | Cadastro inicial dos cinco integrantes e geração de tokens. |
 | `trocar_token.py` | Troca do token de um usuário cadastrado. |
@@ -197,7 +202,7 @@ O Firestore organiza os dados em **coleções e documentos**, em vez de tabelas 
 - Os tokens individuais são gerados aleatoriamente e seus hashes são armazenados no banco. A aplicação não utiliza CPF como senha.
 - O acesso administrativo no app depende da permissão do usuário registrada no banco. No cadastro inicial, Matheus de Carvalho possui essa permissão.
 - As regras do Firestore bloqueiam o acesso direto de clientes. O servidor usa o Admin SDK e valida as permissões no código Python; as regras não restringem esse SDK.
-- A listagem pessoal e a seleção para comparação consultam os cadastros em aberto autorizados ao usuário, sem limite de 50 registros, para que a pesquisa considere a lista inteira. A busca de correspondências parte apenas de cadastros perdidos em aberto do usuário. A busca do usuário consulta até 100 registros do tipo oposto, filtra os abertos da mesma categoria e mostra até cinco resultados com pelo menos 60 pontos.
+- A listagem pessoal e a seleção para comparação consultam os cadastros em aberto autorizados ao usuário, sem limite de 50 registros, para que a pesquisa considere a lista inteira. A busca de correspondências parte apenas de cadastros perdidos em aberto do usuário. Aluno e administrador consultam os encontrados abertos da mesma categoria e usam a mesma função de ordenação. O aluno vê os cinco primeiros após classificar todos os candidatos, sem corte por nota textual; o administrador pode percorrer a lista completa.
 - Na área administrativa, os candidatos abertos da mesma categoria são consultados e apresentados em páginas de dez opções. A paginação da interface não limita a consulta ao banco a dez registros.
 - A comparação tolera variações de maiúsculas, minúsculas, acentos e ordem das palavras, conforme os critérios utilizados. Não garante reconhecimento de todos os sinônimos ou descrições incompletas.
 - As fotos são links externos opcionais. Elas não são enviadas para o Firebase pelo app.

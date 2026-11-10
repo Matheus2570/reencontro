@@ -20,6 +20,9 @@ def corresponde_pesquisa(codigo, dados, termo):
         for campo, valor in registro.items():
             if campo in {"perdido", "encontrado"} and isinstance(valor, dict):
                 coletar(valor)
+            elif campo == "caracteristicas" and isinstance(valor, dict):
+                from caracteristicas import ROTULOS
+                valores.extend(str(v) for c, v in valor.items() if c in ROTULOS)
             elif campo in campos or campo.endswith(("_ra", "_nome")):
                 valores.append(str(valor or ""))
                 if campo == "data_ocorrido" and valor:

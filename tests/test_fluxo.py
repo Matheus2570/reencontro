@@ -210,6 +210,19 @@ mostrar_historico(banco, usuario)
         self.assertTrue(any(t.label == "RA de quem encontrou o objeto" for t in app.text_input))
         self.assertTrue(any("Recebi" in c.label for c in app.checkbox))
 
+    def test_campos_opcionais_mudam_com_categoria(self):
+        app = self.tela(self.dono)
+        for categoria, presente, ausente in [
+            ("Garrafas e recipientes", "Capacidade (ml ou L) — opcional", "Conexão"),
+            ("Roupas e acessórios", "Rodinhas", "Capacidade (ml ou L) — opcional"),
+            ("Eletrônicos", "Conexão", "Rodinhas"),
+        ]:
+            next(s for s in app.selectbox if s.label == "Categoria").set_value(categoria).run()
+            self.assertFalse(app.exception)
+            rotulos = [s.label for s in app.selectbox] + [t.label for t in app.text_input]
+            self.assertIn(presente, rotulos)
+            self.assertNotIn(ausente, rotulos)
+
     def test_interface_resolvidos_so_no_historico(self):
         self.devolver()
         app = self.tela(self.dono)
@@ -225,16 +238,17 @@ mostrar_historico(banco, usuario)
         perdido = registrar_objeto(self.banco, self.item, acesso(self.dono))
         app = self.tela(self.admin)
         next(s for s in app.selectbox if s.label == "Situação").select("Encontrado").run()
+        next(s for s in app.selectbox if s.label == "Categoria").set_value("Outros").run()
         valores = {
             "RA de quem encontrou o objeto": self.finder["ra"],
             "Nome do objeto": self.item["nome"], "Cor": "Azul",
             "Local da perda ou encontro": "Biblioteca",
+            "Marca — opcional": "Acme",
         }
         for campo in app.text_input:
             if campo.label in valores:
                 campo.set_value(valores[campo.label])
         app.text_area[0].set_value(self.item["descricao"])
-        next(s for s in app.selectbox if s.label == "Categoria").set_value("Outros")
         app.checkbox[0].check()
         next(b for b in app.button if b.label == "Salvar objeto").click().run()
         self.assertFalse(app.exception)
@@ -243,6 +257,7 @@ mostrar_historico(banco, usuario)
         next(b for b in app.button if b.label == "Buscar objetos encontrados").click().run()
         self.assertFalse(app.exception)
         encontrado = next(c for c, i in self.banco.dados["itens"].items() if i["tipo"] == "Encontrado")
+        self.assertEqual(self.banco.dados["itens"][encontrado]["caracteristicas"], {"marca": "Acme"})
         next(s for s in app.selectbox if s.label == "Objeto encontrado para conferir").set_value(encontrado).run()
         next(c for c in app.checkbox if c.label.startswith("Conferi")).check()
         next(b for b in app.button if b.label == "Confirmar devolução").click().run()

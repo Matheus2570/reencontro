@@ -7,6 +7,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 
 from pesquisa import normalizar, corresponde_pesquisa
+from caracteristicas import comparar_caracteristicas
 
 
 def pontuar_objetos(origem, candidato):
@@ -19,7 +20,6 @@ def pontuar_objetos(origem, candidato):
         "Descrição": comparar("descricao", fuzz.WRatio),
         "Nome": comparar("nome", fuzz.token_sort_ratio),
         "Local": comparar("local", fuzz.token_set_ratio),
-        "Cor": comparar("cor", fuzz.ratio),
     }
 
     try:
@@ -31,14 +31,42 @@ def pontuar_objetos(origem, candidato):
         notas["Data"] = 0
 
     total = (
-        notas["Descrição"] * 0.35
-        + notas["Nome"] * 0.25
+        notas["Descrição"] * 0.40
+        + notas["Nome"] * 0.30
         + notas["Local"] * 0.20
-        + notas["Cor"] * 0.10
         + notas["Data"] * 0.10
     )
 
     return total, notas
+
+
+def classificar_candidatos(origem, candidatos):
+    """Única ordenação para aluno e administrador; candidatos são (id, item)."""
+    resultados = []
+    for codigo, candidato in candidatos:
+        if candidato.get("status") != "aberto" or candidato.get("categoria") != origem.get("categoria"):
+            continue
+        pontuacao, notas = pontuar_objetos(origem, candidato)
+        avaliacao = comparar_caracteristicas(origem, candidato)
+        resultados.append(dict(id=codigo, item=candidato, pontuacao=pontuacao,
+                               notas=notas, avaliacao=avaliacao))
+    # Nenhuma nota textual compensa uma divergência explícita.
+    resultados.sort(key=lambda r: (bool(r["avaliacao"]["divergencias"]),
+                                  -r["avaliacao"]["compativeis"],
+                                  len(r["avaliacao"]["divergencias"]),
+                                  -r["pontuacao"], r["id"]))
+    return resultados
+
+
+def mostrar_avaliacao(resultado):
+    avaliacao = resultado["avaliacao"]
+    st.write("Características:", avaliacao["situacao"])
+    for detalhe in avaliacao["divergencias"]:
+        st.warning(f"{detalhe['Característica']} — Divergência: {detalhe['Origem']} × {detalhe['Candidato']}.")
+    if avaliacao["detalhes"]:
+        st.table(avaliacao["detalhes"])
+    st.caption("Informação ausente não conta como acordo nem como divergência.")
+    st.write(f"Similaridade textual e de contexto: {resultado['pontuacao']:.1f}/100")
 
 
 def mostrar_correspondencias(banco, usuario):
@@ -103,50 +131,38 @@ def mostrar_correspondencias(banco, usuario):
         candidatos = list(
             banco.collection("itens")
             .where(filter=FieldFilter("tipo", "==", tipo_oposto))
-            .limit(100)
+            .where(filter=FieldFilter("status", "==", "aberto"))
+            .where(filter=FieldFilter("categoria", "==", origem["categoria"]))
             .stream(timeout=15)
         )
     except GoogleAPICallError:
         st.error("Não foi possível buscar correspondências.")
         return
 
-    resultados = []
-
-    for documento in candidatos:
-        candidato = documento.to_dict()
-
-        if (
-            candidato.get("status") != "aberto"
-            or candidato.get("categoria") != origem["categoria"]
-        ):
-            continue
-
-        pontuacao, notas = pontuar_objetos(origem, candidato)
-
-        if pontuacao >= 60:
-            resultados.append((pontuacao, notas, candidato))
-
-    resultados.sort(key=lambda resultado: resultado[0], reverse=True)
-
+    resultados = classificar_candidatos(
+        origem, ((doc.id, doc.to_dict()) for doc in candidatos)
+    )
     st.caption(
-        "Busca em até 100 registros do tipo oposto, "
-        "comparando objetos da mesma categoria. "
-        "Exibe até cinco resultados com pelo menos 60 pontos."
+        "Até cinco resultados da mesma categoria, priorizando características "
+        "compatíveis. Candidatos com divergências ficam abaixo dos demais."
     )
 
     if not resultados:
-        st.info("Nenhuma correspondência atingiu a pontuação mínima.")
+        st.info("Não há objetos encontrados abertos nessa categoria.")
         return
 
     st.info(
-        "A pontuação indica semelhança entre os cadastros. "
+        "A similaridade textual e de contexto é separada das características. "
         "A identidade do objeto precisa ser confirmada por uma pessoa."
     )
 
-    for pontuacao, notas, candidato in resultados[:5]:
+    for resultado in resultados[:5]:
+        candidato = resultado["item"]
+        pontuacao, notas = resultado["pontuacao"], resultado["notas"]
         with st.expander(
-            f"{pontuacao:.1f}/100 pontos — {candidato['nome']}"
+            f"{resultado['avaliacao']['situacao']} — {candidato['nome']}"
         ):
+            mostrar_avaliacao(resultado)
             st.write("Situação:", candidato["tipo"])
             st.write("Cor:", candidato["cor"])
             st.write("Local:", candidato["local"])

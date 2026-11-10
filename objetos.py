@@ -8,6 +8,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from acesso import validar_acesso
 from identificacao import identificar_pessoa
 from pesquisa import corresponde_pesquisa
+from caracteristicas import CAMPOS_COMUNS, CAMPOS_CATEGORIA, ROTULOS, OPCOES, canonico
 
 
 CATEGORIAS = [
@@ -99,6 +100,8 @@ def mostrar_objetos(banco, usuario):
     if not admin:
         st.caption("Cadastre seu objeto perdido. Se encontrou algo, entregue ao almoxarifado para o administrador cadastrar.")
 
+    # Fora do form para atualizar os campos opcionais ao trocar a categoria.
+    categoria = st.selectbox("Categoria", CATEGORIAS)
     with st.form(f"cadastro_objeto_{tipo}", clear_on_submit=True):
         encontrado_por_ra = ""
         recebido = False
@@ -114,10 +117,17 @@ def mostrar_objetos(banco, usuario):
             max_chars=100,
         )
 
-        categoria = st.selectbox(
-            "Categoria",
-            CATEGORIAS,
-        )
+        st.caption("Características opcionais: preencha apenas o que souber com certeza.")
+        caracteristicas = {}
+        for campo in CAMPOS_COMUNS + CAMPOS_CATEGORIA[categoria]:
+            chave = f"caracteristica_{tipo}_{categoria}_{campo}"
+            if campo in OPCOES:
+                valor = st.selectbox(ROTULOS[campo], OPCOES[campo], key=chave,
+                                     format_func=lambda v: v or "Não informado")
+            else:
+                valor = st.text_input(ROTULOS[campo] + " — opcional", max_chars=100, key=chave)
+            if valor.strip():
+                caracteristicas[campo] = valor.strip()
 
         cor = st.text_input(
             "Cor",
@@ -158,6 +168,8 @@ def mostrar_objetos(banco, usuario):
         foto_url = foto_url.strip()
 
         erros = []
+        if "capacidade" in caracteristicas and not canonico("capacidade", caracteristicas["capacidade"]):
+            erros.append("Capacidade: informe um valor positivo em ml ou L, como 750 ml ou 1,2 L.")
 
         for rotulo, valor, minimo, maximo in [
             ("Nome", nome, 3, 100),
@@ -200,6 +212,7 @@ def mostrar_objetos(banco, usuario):
                         "data_ocorrido": data_ocorrido.isoformat(),
                         "descricao": descricao,
                         "foto_url": foto_url,
+                        "caracteristicas": caracteristicas,
                     },
                     dict(st.session_state.get("acesso", {})),
                     encontrado_por_ra.strip(),
@@ -284,6 +297,9 @@ def mostrar_item(documento, banco=None, cache_pessoas=None):
         st.write("Local:", item["local"])
         st.write("Data:", item["data_ocorrido"])
         st.write("Descrição:", item["descricao"])
+        for campo, valor in (item.get("caracteristicas") or {}).items():
+            if campo in ROTULOS:
+                st.write(f"{ROTULOS[campo]}:", valor)
         st.write("Status:", item["status"])
         if item.get("tipo") == "Encontrado":
             st.write("Encontrado por:", identificar_pessoa(

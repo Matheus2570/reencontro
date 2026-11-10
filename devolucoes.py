@@ -2,11 +2,12 @@ import streamlit as st
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.api_core.exceptions import GoogleAPICallError
-from correspondencias import pontuar_objetos
+from correspondencias import classificar_candidatos, mostrar_avaliacao
 from objetos import link_foto_valido
 from acesso import validar_acesso
 from identificacao import identificar_pessoa
 from pesquisa import corresponde_pesquisa
+from caracteristicas import ROTULOS
 
 
 def confirmar_devolucao(banco, perdido_id, encontrado_id, acesso):
@@ -97,6 +98,9 @@ def mostrar_detalhes(item, codigo, banco=None, cache_pessoas=None):
     st.write("Local:", item.get("local", ""))
     st.write("Data:", item.get("data_ocorrido", ""))
     st.write("Descrição:", item.get("descricao", ""))
+    for campo, valor in (item.get("caracteristicas") or {}).items():
+        if campo in ROTULOS:
+            st.write(f"{ROTULOS[campo]}:", valor)
     if item.get("tipo") == "Encontrado":
         st.write("Encontrado por:", identificar_pessoa(
             banco, item.get("encontrado_por_uid") or item.get("autor_uid"),
@@ -172,24 +176,8 @@ def mostrar_devolucoes(banco, usuario):
                 .stream(timeout=15)
             )
 
-            ranking = []
-
-            for candidato_doc in candidatos:
-                candidato = candidato_doc.to_dict()
-                pontuacao, notas = pontuar_objetos(perdido, candidato)
-
-                ranking.append({
-                    "id": candidato_doc.id,
-                    "item": candidato,
-                    "pontuacao": pontuacao,
-                    "notas": notas,
-                })
-
-            ranking.sort(
-                key=lambda resultado: (
-                    -resultado["pontuacao"],
-                    resultado["id"],
-                )
+            ranking = classificar_candidatos(
+                perdido, ((doc.id, doc.to_dict()) for doc in candidatos)
             )
 
             st.session_state["ranking_admin"] = {
@@ -223,7 +211,7 @@ def mostrar_devolucoes(banco, usuario):
     )
     total = len(ranking)
     ranking = [r for r in ranking if corresponde_pesquisa(r["id"], r["item"], termo)]
-    st.write(f"{len(ranking)} de {total} candidatos, ordenados pela semelhança.")
+    st.write(f"{len(ranking)} de {total} candidatos, ordenados por compatibilidade e depois similaridade textual e de contexto.")
     if not ranking:
         st.info("Nenhum candidato corresponde à pesquisa.")
         return
@@ -249,7 +237,8 @@ def mostrar_devolucoes(banco, usuario):
         index=None,
         placeholder="Selecione um candidato",
         format_func=lambda chave: (
-            f"{opcoes[chave]['pontuacao']:.1f}/100 — "
+            f"{opcoes[chave]['avaliacao']['situacao']} — "
+            f"Texto/contexto: {opcoes[chave]['pontuacao']:.1f}/100 — "
             f"{opcoes[chave]['item']['nome']} — "
             f"{opcoes[chave]['item']['local']} — "
             f"Código: {chave}"
@@ -272,10 +261,7 @@ def mostrar_devolucoes(banco, usuario):
         st.subheader("Objeto encontrado")
         mostrar_detalhes(resultado["item"], escolhido, banco)
 
-    st.write(
-        f"Pontuação de semelhança: "
-        f"{resultado['pontuacao']:.1f}/100"
-    )
+    mostrar_avaliacao(resultado)
 
     st.table([
         {"Critério": criterio, "Pontos": round(pontos, 1)}
